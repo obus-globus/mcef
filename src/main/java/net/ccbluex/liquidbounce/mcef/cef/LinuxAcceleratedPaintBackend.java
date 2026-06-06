@@ -14,7 +14,6 @@ package net.ccbluex.liquidbounce.mcef.cef;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.ccbluex.liquidbounce.mcef.MCEF;
 import net.ccbluex.liquidbounce.mcef.utils.EglUtils;
-import org.cef.handler.CefAcceleratedPaintInfo;
 import org.cef.handler.CefAcceleratedPaintInfoLinux;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -33,13 +32,15 @@ import static org.lwjgl.opengl.GL11.*;
 final class LinuxAcceleratedPaintBackend implements AcceleratedPaintBackend {
 
     @Override
-    public boolean accepts(CefAcceleratedPaintInfo info) {
-        return info instanceof CefAcceleratedPaintInfoLinux;
+    public boolean supports(AcceleratedPaintImportContext context) {
+        return context.isOpenGlDevice() && context.info() instanceof CefAcceleratedPaintInfoLinux;
     }
 
     @Override
-    public @Nullable AcceleratedPaintFrame importFrame(CefAcceleratedPaintInfo info, int width, int height) {
-        var linuxInfo = (CefAcceleratedPaintInfoLinux) info;
+    public @Nullable AcceleratedPaintFrame importFrame(AcceleratedPaintImportContext context) {
+        var linuxInfo = (CefAcceleratedPaintInfoLinux) context.info();
+        var width = context.width();
+        var height = context.height();
         if (!linuxInfo.hasDmaBufPlanes()) {
             MCEF.INSTANCE.LOGGER.warn("Accelerated paint info has no dmabuf planes on Linux.");
             return null;

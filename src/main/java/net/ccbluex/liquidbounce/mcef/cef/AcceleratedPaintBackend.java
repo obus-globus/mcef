@@ -11,7 +11,6 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
-import org.cef.handler.CefAcceleratedPaintInfo;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -19,12 +18,21 @@ import org.jspecify.annotations.Nullable;
 sealed interface AcceleratedPaintBackend extends AutoCloseable
         permits LinuxAcceleratedPaintBackend, WindowsAcceleratedPaintBackend {
 
-    boolean accepts(CefAcceleratedPaintInfo info);
+    /**
+     * Returns whether this backend can import the frame described by {@code context}.
+     * <p>
+     * Implementations should check both the CEF platform payload and the active Blaze3D GPU backend. A platform
+     * payload alone is not enough because the same CEF frame has to be imported differently for OpenGL and Vulkan.
+     */
+    boolean supports(AcceleratedPaintImportContext context);
 
     /**
-     * Imports a platform frame as a temporary copy source. The renderer owns the final display texture.
+     * Imports the platform frame as a temporary copy source.
+     * <p>
+     * The returned frame is only used long enough for the renderer to copy it into the stable display texture
+     * owned by MCEF. Implementations must not expose CEF callback-owned resources as long-lived textures.
      */
-    @Nullable AcceleratedPaintFrame importFrame(CefAcceleratedPaintInfo info, int width, int height);
+    @Nullable AcceleratedPaintFrame importFrame(AcceleratedPaintImportContext context);
 
     @Override
     void close();

@@ -216,18 +216,24 @@ public class MCEFRenderer implements Closeable {
     protected void onAcceleratedPaint(CefAcceleratedPaintInfo info, int width, int height) {
         RenderSystem.assertOnRenderThread();
 
-        if (transparent) {
+        var device = RenderSystem.getDevice();
+        var context = new AcceleratedPaintImportContext(info, device, width, height);
+        if (transparent && context.isOpenGlDevice()) {
             GlStateManager._enableBlend(0);
         }
 
         for (var backend : acceleratedPaintBackends) {
-            if (backend.accepts(info)) {
-                copyAcceleratedFrame(backend, info, width, height);
+            if (backend.supports(context)) {
+                copyAcceleratedFrame(backend, context);
                 return;
             }
         }
 
-        MCEF.INSTANCE.LOGGER.warn("Unsupported CefAcceleratedPaintInfo type: {}", info.getClass().getName());
+        MCEF.INSTANCE.LOGGER.warn(
+                "Unsupported accelerated paint import: infoType={}, backend={}",
+                info.getClass().getName(),
+                device.getDeviceInfo().backendName()
+        );
     }
 
     /**
@@ -371,17 +377,15 @@ public class MCEFRenderer implements Closeable {
 
     private void copyAcceleratedFrame(
             AcceleratedPaintBackend backend,
-            CefAcceleratedPaintInfo info,
-            int width,
-            int height
+            AcceleratedPaintImportContext context
     ) {
-        var frame = backend.importFrame(info, width, height);
+        var frame = backend.importFrame(context);
         if (frame == null) {
             return;
         }
 
         try (frame) {
-            copyAcceleratedFrame(frame, width, height);
+            copyAcceleratedFrame(frame, context.width(), context.height());
         }
     }
 

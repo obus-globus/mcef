@@ -14,7 +14,6 @@ package net.ccbluex.liquidbounce.mcef.cef;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import net.ccbluex.liquidbounce.mcef.MCEF;
-import org.cef.handler.CefAcceleratedPaintInfo;
 import org.cef.handler.CefAcceleratedPaintInfoWin;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -34,13 +33,15 @@ final class WindowsAcceleratedPaintBackend implements AcceleratedPaintBackend {
             new Long2ObjectLinkedOpenHashMap<>(SHARED_TEXTURE_CACHE_LIMIT);
 
     @Override
-    public boolean accepts(CefAcceleratedPaintInfo info) {
-        return info instanceof CefAcceleratedPaintInfoWin;
+    public boolean supports(AcceleratedPaintImportContext context) {
+        return context.isOpenGlDevice() && context.info() instanceof CefAcceleratedPaintInfoWin;
     }
 
     @Override
-    public @Nullable AcceleratedPaintFrame importFrame(CefAcceleratedPaintInfo info, int width, int height) {
-        var winInfo = (CefAcceleratedPaintInfoWin) info;
+    public @Nullable AcceleratedPaintFrame importFrame(AcceleratedPaintImportContext context) {
+        var winInfo = (CefAcceleratedPaintInfoWin) context.info();
+        var width = context.width();
+        var height = context.height();
         if (winInfo.shared_texture_handle == 0) {
             MCEF.INSTANCE.LOGGER.warn("Accelerated paint shared texture handle is invalid.");
             return null;
