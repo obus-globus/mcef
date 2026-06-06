@@ -23,8 +23,10 @@ package net.ccbluex.liquidbounce.mcef;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import java.util.Locale;
+import java.util.Set;
 
 import net.ccbluex.liquidbounce.mcef.utils.EglUtils;
+import net.ccbluex.liquidbounce.mcef.vulkan.MCEFVulkanDeviceExtensions;
 import org.lwjgl.egl.EGL14;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
@@ -105,13 +107,31 @@ public final class MCEFAccelerationSupport {
         try {
             RenderSystem.assertOnRenderThread();
 
-            // Check if WEBKIT_DISABLE_DMABUF_RENDERER=1 is set.
             var webkitDisableDmabufRenderer = System.getenv("WEBKIT_DISABLE_DMABUF_RENDERER");
             if (webkitDisableDmabufRenderer != null && webkitDisableDmabufRenderer.equals("1")) {
                 MCEF.INSTANCE.LOGGER.warn("WEBKIT_DISABLE_DMABUF_RENDERER=1 is set.");
                 return Support.UNSUPPORTED;
             }
 
+            var backendName = RenderSystem.getDevice().getDeviceInfo().backendName();
+            if ("Vulkan".equals(backendName)) {
+                return checkLinuxVulkanSupport();
+            }
+
+            if (!"OpenGL".equals(backendName)) {
+                MCEF.INSTANCE.LOGGER.warn("Linux GPU acceleration does not support Blaze3D backend: {}", backendName);
+                return Support.UNSUPPORTED;
+            }
+
+            return checkLinuxOpenGlSupport();
+        } catch (Exception e) {
+            MCEF.INSTANCE.LOGGER.warn("Failed to check Linux GPU acceleration support: {}", e.getMessage());
+            return Support.UNSUPPORTED;
+        }
+    }
+
+    private static Support checkLinuxOpenGlSupport() {
+        try {
             var eglDisplay = EglUtils.getDisplay();
             if (eglDisplay == EGL14.EGL_NO_DISPLAY) {
                 MCEF.INSTANCE.LOGGER.warn("EGL display is not available for accelerated paint");
@@ -139,9 +159,43 @@ public final class MCEFAccelerationSupport {
 
             return new Support(true, false);
         } catch (Exception e) {
-            MCEF.INSTANCE.LOGGER.warn("Failed to check Linux GPU acceleration support: {}", e.getMessage());
+            MCEF.INSTANCE.LOGGER.warn("Failed to check Linux OpenGL GPU acceleration support: {}", e.getMessage());
             return Support.UNSUPPORTED;
         }
+    }
+
+    private static Support checkLinuxVulkanSupport() {
+        var enabledExtensions = RenderSystem.getDevice().getDeviceInfo().underlyingExtensions();
+        var missingExtensions = missingEnabledExtensions(enabledExtensions, MCEFVulkanDeviceExtensions.LINUX_DMABUF_IMPORT);
+        if (!missingExtensions.isEmpty()) {
+            MCEF.INSTANCE.LOGGER.warn(
+                "Linux Vulkan GPU acceleration requires missing Vulkan device extensions: {}",
+                missingExtensions
+            );
+            return Support.UNSUPPORTED;
+        }
+
+        MCEF.INSTANCE.LOGGER.info("Linux Vulkan GPU acceleration is available for dmabuf accelerated paint.");
+        return new Support(true, false);
+    }
+
+    private static Set<String> missingEnabledExtensions(Set<String> enabledExtensions, Set<String> requiredExtensions) {
+        var missingExtensions = new java.util.HashSet<String>();
+        for (var requiredExtension : requiredExtensions) {
+            if (!hasEnabledExtension(enabledExtensions, requiredExtension)) {
+                missingExtensions.add(requiredExtension);
+            }
+        }
+        return missingExtensions;
+    }
+
+    private static boolean hasEnabledExtension(Set<String> enabledExtensions, String extension) {
+        for (var enabledExtension : enabledExtensions) {
+            if (enabledExtension.equals(extension) || enabledExtension.startsWith(extension + " ")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isNvidiaGpu(String vendor, String renderer) {

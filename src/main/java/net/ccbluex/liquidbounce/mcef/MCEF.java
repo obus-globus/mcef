@@ -21,6 +21,7 @@
 
 package net.ccbluex.liquidbounce.mcef;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.ccbluex.liquidbounce.mcef.cef.*;
 import net.minecraft.client.Minecraft;
 import org.jspecify.annotations.NullMarked;
@@ -131,12 +132,23 @@ public enum MCEF {
         assertInitialized();
         assert client != null;
         if (browserSettings == null) {
-            browserSettings = new MCEFBrowserSettings(60, false);
+            browserSettings = createDefaultBrowserSettings();
         }
         MCEFBrowser browser = new MCEFBrowser(client, url, transparent, browserSettings);
         browser.setCloseAllowed();
         browser.createImmediately();
         return browser;
+    }
+
+    private MCEFBrowserSettings createDefaultBrowserSettings() {
+        var sharedTextureEnabled = false;
+        if (RenderSystem.isOnRenderThread()) {
+            sharedTextureEnabled = MCEFAccelerationSupport.getAccelerationSupport().isSupported();
+        } else {
+            LOGGER.warn("Cannot auto-enable browser shared textures outside the render thread.");
+        }
+
+        return new MCEFBrowserSettings(60, sharedTextureEnabled);
     }
 
     /**

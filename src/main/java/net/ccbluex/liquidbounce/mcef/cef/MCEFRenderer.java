@@ -71,6 +71,7 @@ public class MCEFRenderer implements Closeable {
     private boolean isBGRA = false;
     private boolean unpainted = true;
     private boolean isAccelerated = false;
+    private boolean loggedAcceleratedImportFailure = false;
 
     protected MCEFRenderer(boolean transparent) {
         this.transparent = transparent;
@@ -225,7 +226,9 @@ public class MCEFRenderer implements Closeable {
 
         for (var backend : acceleratedPaintBackends) {
             if (backend.supports(context)) {
-                copyAcceleratedFrame(backend, context);
+                if (!copyAcceleratedFrame(backend, context)) {
+                    logAcceleratedImportFailure(backend, context);
+                }
                 return;
             }
         }
@@ -376,17 +379,31 @@ public class MCEFRenderer implements Closeable {
         isAccelerated = false;
     }
 
-    private void copyAcceleratedFrame(
+    private boolean copyAcceleratedFrame(
             AcceleratedPaintBackend backend,
             AcceleratedPaintImportContext context
     ) {
         var frame = backend.importFrame(context);
         if (frame == null) {
-            return;
+            return false;
         }
 
         try (frame) {
             copyAcceleratedFrame(frame, context.width(), context.height());
+        }
+        return true;
+    }
+
+    private void logAcceleratedImportFailure(AcceleratedPaintBackend backend, AcceleratedPaintImportContext context) {
+        var message = "Accelerated paint backend {} accepted payload {} on {} but did not import the frame.";
+        var backendName = backend.getClass().getSimpleName();
+        var payloadName = context.info().getClass().getName();
+        var deviceBackend = context.device().getDeviceInfo().backendName();
+        if (!loggedAcceleratedImportFailure) {
+            MCEF.INSTANCE.LOGGER.warn(message, backendName, payloadName, deviceBackend);
+            loggedAcceleratedImportFailure = true;
+        } else {
+            MCEF.INSTANCE.LOGGER.debug(message, backendName, payloadName, deviceBackend);
         }
     }
 
