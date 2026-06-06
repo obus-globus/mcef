@@ -28,15 +28,20 @@ import org.lwjgl.vulkan.EXTImageDrmFormatModifier;
 import org.lwjgl.vulkan.EXTQueueFamilyForeign;
 import org.lwjgl.vulkan.KHRExternalMemoryFd;
 import org.lwjgl.vulkan.VK12;
+import org.lwjgl.vulkan.VkExternalImageFormatProperties;
 import org.lwjgl.vulkan.VkExternalMemoryImageCreateInfo;
 import org.lwjgl.vulkan.VkImageCreateInfo;
 import org.lwjgl.vulkan.VkImageDrmFormatModifierExplicitCreateInfoEXT;
+import org.lwjgl.vulkan.VkImageFormatProperties2;
 import org.lwjgl.vulkan.VkImageMemoryBarrier;
 import org.lwjgl.vulkan.VkImportMemoryFdInfoKHR;
 import org.lwjgl.vulkan.VkMemoryAllocateInfo;
 import org.lwjgl.vulkan.VkMemoryDedicatedAllocateInfo;
 import org.lwjgl.vulkan.VkMemoryFdPropertiesKHR;
 import org.lwjgl.vulkan.VkMemoryRequirements;
+import org.lwjgl.vulkan.VkPhysicalDeviceExternalImageFormatInfo;
+import org.lwjgl.vulkan.VkPhysicalDeviceImageDrmFormatModifierInfoEXT;
+import org.lwjgl.vulkan.VkPhysicalDeviceImageFormatInfo2;
 import org.lwjgl.vulkan.VkPhysicalDeviceMemoryProperties;
 import org.lwjgl.vulkan.VkSubresourceLayout;
 
@@ -60,6 +65,8 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
             | GpuTexture.USAGE_COPY_SRC
             | GpuTexture.USAGE_COPY_DST;
     private static final int DMA_BUF_HANDLE_TYPE = EXTExternalMemoryDmaBuf.VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+    private static final int IMPORTED_IMAGE_USAGE = VK12.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+            | VK12.VK_IMAGE_USAGE_SAMPLED_BIT;
 
     private boolean loggedMissingPlanes;
     private boolean loggedUnsupportedFormat;
@@ -174,6 +181,7 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
         var vkMemory = 0L;
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            verifyImageFormatImportable(info, width, height, vulkanDevice);
             importedFd = duplicateFd(sourceFd);
             fdOwnedByJava = true;
 
@@ -197,7 +205,7 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
                     .format(vkFormat(info.format))
                     .tiling(EXTImageDrmFormatModifier.VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
                     .initialLayout(VK12.VK_IMAGE_LAYOUT_UNDEFINED)
-                    .usage(VK12.VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK12.VK_IMAGE_USAGE_SAMPLED_BIT)
+                    .usage(IMPORTED_IMAGE_USAGE)
                     .sharingMode(VK12.VK_SHARING_MODE_EXCLUSIVE)
                     .samples(VK12.VK_SAMPLE_COUNT_1_BIT);
 
@@ -257,6 +265,79 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
 
             if (vkImage != 0L) {
                 VK12.vkDestroyImage(vkDevice, vkImage, null);
+            }
+        }
+    }
+
+    private void verifyImageFormatImportable(
+            CefAcceleratedPaintInfoLinux info,
+            int width,
+            int height,
+            VulkanDevice vulkanDevice
+    ) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var format = vkFormat(info.format);
+            var externalImageFormatInfo = VkPhysicalDeviceExternalImageFormatInfo.calloc(stack)
+                    .sType$Default()
+                    .handleType(DMA_BUF_HANDLE_TYPE);
+            var drmFormatModifierInfo = VkPhysicalDeviceImageDrmFormatModifierInfoEXT.calloc(stack)
+                    .sType$Default()
+                    .pNext(externalImageFormatInfo.address())
+                    .drmFormatModifier(info.modifier)
+                    .sharingMode(VK12.VK_SHARING_MODE_EXCLUSIVE);
+            var imageFormatInfo = VkPhysicalDeviceImageFormatInfo2.calloc(stack)
+                    .sType$Default()
+                    .pNext(drmFormatModifierInfo)
+                    .format(format)
+                    .type(VK12.VK_IMAGE_TYPE_2D)
+                    .tiling(EXTImageDrmFormatModifier.VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+                    .usage(IMPORTED_IMAGE_USAGE)
+                    .flags(0);
+
+            var externalImageFormatProperties = VkExternalImageFormatProperties.calloc(stack).sType$Default();
+            var imageFormatProperties = VkImageFormatProperties2.calloc(stack)
+                    .sType$Default()
+                    .pNext(externalImageFormatProperties);
+
+            var result = VK12.vkGetPhysicalDeviceImageFormatProperties2(
+                    vulkanDevice.vkDevice().getPhysicalDevice(),
+                    imageFormatInfo,
+                    imageFormatProperties
+            );
+            if (result != VK12.VK_SUCCESS) {
+                throw new IllegalStateException(
+                        "Vulkan format/modifier is unsupported for dmabuf import: format="
+                                + format + ", modifier=0x" + Long.toHexString(info.modifier)
+                                + ", VkResult=" + result
+                );
+            }
+
+            var maxExtent = imageFormatProperties.imageFormatProperties().maxExtent();
+            if (width > maxExtent.width() || height > maxExtent.height()) {
+                throw new IllegalStateException(
+                        "Imported dmabuf image exceeds Vulkan format limits: "
+                                + width + "x" + height + " > "
+                                + maxExtent.width() + "x" + maxExtent.height()
+                );
+            }
+
+            var externalMemoryProperties = externalImageFormatProperties.externalMemoryProperties();
+            var externalMemoryFeatures = externalMemoryProperties.externalMemoryFeatures();
+            if ((externalMemoryFeatures & VK12.VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) == 0) {
+                throw new IllegalStateException(
+                        "Vulkan format/modifier is not importable from dmabuf: format="
+                                + format + ", modifier=0x" + Long.toHexString(info.modifier)
+                                + ", externalMemoryFeatures=0x" + Integer.toHexString(externalMemoryFeatures)
+                );
+            }
+
+            var compatibleHandleTypes = externalMemoryProperties.compatibleHandleTypes();
+            if ((compatibleHandleTypes & DMA_BUF_HANDLE_TYPE) == 0) {
+                throw new IllegalStateException(
+                        "Vulkan format/modifier is not compatible with dmabuf handles: format="
+                                + format + ", modifier=0x" + Long.toHexString(info.modifier)
+                                + ", compatibleHandleTypes=0x" + Integer.toHexString(compatibleHandleTypes)
+                );
             }
         }
     }
