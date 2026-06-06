@@ -26,6 +26,11 @@ Accelerated paint imports platform textures and then copies them with Blaze3D
 swapping depending on the platform and CEF color type. `MCEFRenderer.isBGRA()` reports the
 required sampling behavior for the currently exposed texture.
 
+On Linux Vulkan, dmabuf frames are imported as temporary copy-source `VkImage` objects and
+copied byte-for-byte into the stable browser texture. CEF RGBA frames are exposed as normal
+RGBA. CEF BGRA frames are copied into the same `GpuFormat.RGBA8_UNORM` target and therefore
+set `MCEFRenderer.isBGRA()` to `true`.
+
 ## Consumer Contract
 
 `MCEFRenderer.isBGRA()` means "sampling this texture requires red/blue channel swapping".

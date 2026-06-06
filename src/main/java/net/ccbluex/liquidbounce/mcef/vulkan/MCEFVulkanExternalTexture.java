@@ -11,10 +11,19 @@
 
 package net.ccbluex.liquidbounce.mcef.vulkan;
 
+import com.mojang.blaze3d.vulkan.VulkanDevice;
 import org.jspecify.annotations.NullMarked;
 
 @NullMarked
 public interface MCEFVulkanExternalTexture {
+
+    /**
+     * Returns the Minecraft Vulkan device that owns this texture wrapper.
+     * <p>
+     * External importers need the exact {@link VulkanDevice} used by the texture so that imported images,
+     * layout transitions, and destruction all run against the same logical device and destruction queue.
+     */
+    VulkanDevice mcef$getVulkanDevice();
 
     /**
      * Replaces the texture's internally allocated Vulkan image with an externally-created or imported image.

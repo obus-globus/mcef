@@ -68,6 +68,11 @@ public abstract class VulkanGpuTextureMixin implements MCEFVulkanExternalTexture
     private @Nullable Runnable mcef$externalDestroyAction;
 
     @Override
+    public VulkanDevice mcef$getVulkanDevice() {
+        return device;
+    }
+
+    @Override
     public void mcef$setExternalVkImage(long vkImage, long vmaAllocation, Runnable destroyAction) {
         if (vkImage == 0L) {
             throw new IllegalArgumentException("External Vulkan image must not be VK_NULL_HANDLE");
