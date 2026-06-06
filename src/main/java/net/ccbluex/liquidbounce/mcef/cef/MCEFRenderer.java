@@ -64,6 +64,7 @@ public class MCEFRenderer implements Closeable {
     private boolean textureRegistered = false;
     private final List<AcceleratedPaintBackend> acceleratedPaintBackends = List.of(
             new WindowsAcceleratedPaintBackend(),
+            new LinuxVulkanAcceleratedPaintBackend(),
             new LinuxAcceleratedPaintBackend()
     );
 

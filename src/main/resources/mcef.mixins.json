@@ -3,6 +3,7 @@
   "package": "net.ccbluex.liquidbounce.mcef.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "VulkanBackendMixin",
     "VulkanGpuTextureMixin"
   ],
   "injectors": {
