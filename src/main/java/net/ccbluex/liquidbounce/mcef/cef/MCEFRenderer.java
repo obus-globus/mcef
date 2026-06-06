@@ -21,13 +21,13 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import net.ccbluex.liquidbounce.mcef.MCEF;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.resources.Identifier;
@@ -220,7 +220,7 @@ public class MCEFRenderer implements Closeable {
         RenderSystem.assertOnRenderThread();
 
         if (transparent) {
-            GlStateManager._enableBlend();
+            GlStateManager._enableBlend(0);
         }
 
         for (var backend : acceleratedPaintBackends) {
@@ -262,7 +262,7 @@ public class MCEFRenderer implements Closeable {
         }
 
         if (transparent) {
-            GlStateManager._enableBlend();
+            GlStateManager._enableBlend(0);
         }
 
         if (texture instanceof GlTexture glTexture) {
@@ -420,7 +420,7 @@ public class MCEFRenderer implements Closeable {
                 | GpuTexture.USAGE_RENDER_ATTACHMENT
                 | GpuTexture.USAGE_COPY_SRC
                 | GpuTexture.USAGE_COPY_DST,
-            TextureFormat.RGBA8,
+            GpuFormat.RGBA8_UNORM,
             width,
             height,
             1,
