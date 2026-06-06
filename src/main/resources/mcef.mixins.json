@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "net.ccbluex.liquidbounce.mcef.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "VulkanGpuTextureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

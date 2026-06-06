@@ -10,7 +10,9 @@
   "license": "LGPL 2.1",
   "icon": "icon.png",
   "environment": "*",
-  "mixins": [],
+  "mixins": [
+    "mcef.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "minecraft": ["${minecraft_version}"]
