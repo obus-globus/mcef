@@ -185,11 +185,11 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
                     .sType$Default()
                     .drmFormatModifier(info.modifier)
                     .pPlaneLayouts(planeLayouts);
+            externalMemory.pNext(drmModifier.address());
 
             var imageCreateInfo = VkImageCreateInfo.calloc(stack)
                     .sType$Default()
                     .pNext(externalMemory)
-                    .pNext(drmModifier)
                     .imageType(VK12.VK_IMAGE_TYPE_2D)
                     .extent(extent -> extent.set(width, height, 1))
                     .mipLevels(1)
@@ -226,10 +226,10 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
                     .sType$Default()
                     .handleType(DMA_BUF_HANDLE_TYPE)
                     .fd(importedFd);
+            dedicatedAllocateInfo.pNext(importInfo.address());
             var allocateInfo = VkMemoryAllocateInfo.calloc(stack)
                     .sType$Default()
                     .pNext(dedicatedAllocateInfo)
-                    .pNext(importInfo)
                     .allocationSize(imageRequirements.size())
                     .memoryTypeIndex(memoryTypeIndex);
 
@@ -289,6 +289,16 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
             var commandEncoder = vulkanDevice.createCommandEncoder();
             var commandBuffer = commandEncoder.allocateAndBeginTransientCommandBuffer();
 
+            /*
+             * The dmabuf producer owns the image through the foreign queue family. Acquiring it into
+             * GENERAL preserves the already-written CEF contents; using UNDEFINED here would allow the
+             * implementation to discard them before the copy.
+             *
+             * Current JCEF Linux accelerated paint metadata exposes dmabuf fds, plane layouts, and the DRM
+             * modifier, but no sync fd or semaphore payload. Until that contract grows an explicit sync
+             * primitive, this backend can only acquire ownership and rely on the callback-provided image being
+             * ready for consumption when CEF invokes the paint callback.
+             */
             var barrier = VkImageMemoryBarrier.calloc(1, stack).sType$Default();
             barrier.oldLayout(VK12.VK_IMAGE_LAYOUT_GENERAL);
             barrier.newLayout(VK12.VK_IMAGE_LAYOUT_GENERAL);

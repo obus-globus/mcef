@@ -31,6 +31,12 @@ copied byte-for-byte into the stable browser texture. CEF RGBA frames are expose
 RGBA. CEF BGRA frames are copied into the same `GpuFormat.RGBA8_UNORM` target and therefore
 set `MCEFRenderer.isBGRA()` to `true`.
 
+The Linux Vulkan importer performs a foreign queue-family ownership acquire into
+`VK_IMAGE_LAYOUT_GENERAL` before recording the Blaze3D copy. Current Java CEF accelerated paint
+metadata does not expose a sync fd or semaphore, so this path cannot emit an explicit producer
+wait yet. The temporary source texture is closed after the copy is recorded, and its imported
+`VkImage`/memory pair is released through Minecraft's Vulkan destruction queue.
+
 ## Consumer Contract
 
 `MCEFRenderer.isBGRA()` means "sampling this texture requires red/blue channel swapping".
