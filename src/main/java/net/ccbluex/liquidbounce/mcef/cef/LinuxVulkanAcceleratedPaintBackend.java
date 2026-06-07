@@ -46,6 +46,7 @@ import org.lwjgl.vulkan.VkPhysicalDeviceMemoryProperties;
 import org.lwjgl.vulkan.VkSubresourceLayout;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -215,6 +216,7 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
 
             var imageRequirements = VkMemoryRequirements.calloc(stack);
             VK12.vkGetImageMemoryRequirements(vkDevice, vkImage, imageRequirements);
+            var allocationSize = allocationSize(info, planeCount, imageRequirements.size());
 
             var fdProperties = VkMemoryFdPropertiesKHR.calloc(stack).sType$Default();
             checkVulkan(
@@ -238,8 +240,20 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
             var allocateInfo = VkMemoryAllocateInfo.calloc(stack)
                     .sType$Default()
                     .pNext(dedicatedAllocateInfo)
-                    .allocationSize(imageRequirements.size())
+                    .allocationSize(allocationSize)
                     .memoryTypeIndex(memoryTypeIndex);
+
+            logDmaBufImport(
+                    info,
+                    planeCount,
+                    width,
+                    height,
+                    vkFormat(info.format),
+                    imageRequirements.size(),
+                    allocationSize,
+                    fdProperties.memoryTypeBits(),
+                    memoryTypeIndex
+            );
 
             var memoryHandle = stack.callocLong(1);
             checkVulkan(VK12.vkAllocateMemory(vkDevice, allocateInfo, null, memoryHandle), "vkAllocateMemory");
@@ -365,6 +379,43 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
         return layouts.position(0);
     }
 
+    private long allocationSize(CefAcceleratedPaintInfoLinux info, int planeCount, long imageRequirementSize) {
+        var dmaBufSize = dmaBufSize(info, planeCount);
+        if (dmaBufSize < imageRequirementSize) {
+            MCEF.INSTANCE.LOGGER.debug(
+                    "Linux Vulkan dmabuf span {} is smaller than VkMemoryRequirements.size {}; using requirement size.",
+                    dmaBufSize,
+                    imageRequirementSize
+            );
+            return imageRequirementSize;
+        }
+
+        return dmaBufSize;
+    }
+
+    private long dmaBufSize(CefAcceleratedPaintInfoLinux info, int planeCount) {
+        if (info.plane_sizes == null || info.plane_sizes.length < planeCount) {
+            throw new IllegalArgumentException("Missing dmabuf plane sizes for Vulkan import.");
+        }
+
+        var size = 0L;
+        for (int i = 0; i < planeCount; i++) {
+            var offset = info.plane_offsets[i];
+            var planeSize = info.plane_sizes[i];
+            if (planeSize <= 0L) {
+                throw new IllegalArgumentException("Invalid dmabuf plane size at index " + i);
+            }
+
+            try {
+                size = Math.max(size, Math.addExact(offset, planeSize));
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("dmabuf plane layout overflows at index " + i, exception);
+            }
+        }
+
+        return size;
+    }
+
     private void transitionToGeneralLayout(VulkanDevice vulkanDevice, long vkImage) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var commandEncoder = vulkanDevice.createCommandEncoder();
@@ -445,10 +496,19 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
     }
 
     private int usablePlaneCount(CefAcceleratedPaintInfoLinux info) {
-        var planeCount = Math.min(info.plane_count, info.plane_fds.length);
-        planeCount = Math.min(planeCount, info.plane_strides.length);
-        planeCount = Math.min(planeCount, info.plane_offsets.length);
-        return Math.min(planeCount, 4);
+        var planeCount = info.plane_count;
+        if (planeCount <= 0 || planeCount > 4) {
+            return 0;
+        }
+
+        if (info.plane_fds == null || info.plane_fds.length < planeCount
+                || info.plane_strides == null || info.plane_strides.length < planeCount
+                || info.plane_offsets == null || info.plane_offsets.length < planeCount
+                || info.plane_sizes == null || info.plane_sizes.length < planeCount) {
+            return 0;
+        }
+
+        return planeCount;
     }
 
     private int sharedPlaneFd(CefAcceleratedPaintInfoLinux info, int planeCount) {
@@ -511,6 +571,42 @@ final class LinuxVulkanAcceleratedPaintBackend implements AcceleratedPaintBacken
             }
         }
         return false;
+    }
+
+    private void logDmaBufImport(
+            CefAcceleratedPaintInfoLinux info,
+            int planeCount,
+            int width,
+            int height,
+            int vkFormat,
+            long imageRequirementSize,
+            long allocationSize,
+            int fdMemoryTypeBits,
+            int memoryTypeIndex
+    ) {
+        MCEF.INSTANCE.LOGGER.debug(
+                "Linux Vulkan dmabuf import: cefFormat={}, vkFormat={}, size={}x{}, modifier=0x{}, planes={}",
+                info.format,
+                vkFormat,
+                width,
+                height,
+                Long.toHexString(info.modifier),
+                planeCount
+        );
+        MCEF.INSTANCE.LOGGER.debug(
+                "Linux Vulkan dmabuf planes: fds={}, strides={}, offsets={}, sizes={}",
+                Arrays.toString(info.plane_fds),
+                Arrays.toString(info.plane_strides),
+                Arrays.toString(info.plane_offsets),
+                Arrays.toString(info.plane_sizes)
+        );
+        MCEF.INSTANCE.LOGGER.debug(
+                "Linux Vulkan dmabuf memory: requirementSize={}, allocationSize={}, fdMemoryTypeBits=0x{}, memoryTypeIndex={}",
+                imageRequirementSize,
+                allocationSize,
+                Integer.toHexString(fdMemoryTypeBits),
+                memoryTypeIndex
+        );
     }
 
     private record DmaBufImportResult(
