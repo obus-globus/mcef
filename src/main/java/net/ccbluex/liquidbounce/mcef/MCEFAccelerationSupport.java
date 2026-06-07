@@ -72,6 +72,19 @@ public final class MCEFAccelerationSupport {
         try {
             RenderSystem.assertOnRenderThread();
 
+            var backendName = RenderSystem.getDevice().getDeviceInfo().backendName();
+            if ("Vulkan".equals(backendName)) {
+                MCEF.INSTANCE.LOGGER.warn(
+                    "Windows Vulkan GPU acceleration is not supported yet. CEF currently exposes only a D3D11 shared texture handle; Vulkan import still needs a validated handle type and synchronization contract."
+                );
+                return Support.UNSUPPORTED;
+            }
+
+            if (!"OpenGL".equals(backendName)) {
+                MCEF.INSTANCE.LOGGER.warn("Windows GPU acceleration does not support Blaze3D backend: {}", backendName);
+                return Support.UNSUPPORTED;
+            }
+
             var capabilities = GL.getCapabilities();
             var vendor = GL11.glGetString(GL11.GL_VENDOR);
             var renderer = GL11.glGetString(GL11.GL_RENDERER);
