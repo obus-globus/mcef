@@ -173,7 +173,7 @@ final class MacAcceleratedPaintBackend implements AcceleratedPaintBackend {
             var directTexture = new MCEFDirectTexture();
             directTexture.setOwnedDirectTextureId(texture2DId, width, height);
             texture2DId = 0;
-            return new AcceleratedPaintFrame(directTexture.getTexture(), true, directTexture::close);
+            return new AcceleratedPaintFrame(directTexture.getTexture(), false, directTexture::close);
         } finally {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
